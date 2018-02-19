@@ -97,18 +97,21 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)startManager {
     __weak typeof (self) weakSelf = self;
     [self.sdlManager startWithReadyHandler:^(BOOL success, NSError * _Nullable error) {
-        if (!success) {
-            SDLLogE(@"SDL errored starting up: %@", error);
-            [weakSelf sdlex_updateProxyState:ProxyStateStopped];
-            return;
-        }
-        
-        [weakSelf sdlex_updateProxyState:ProxyStateConnected];
-
-        [weakSelf sdlex_setupPermissionsCallbacks];
-        
-        if ([weakSelf.sdlManager.hmiLevel isEqualToEnum:SDLHMILevelFull]) {
-            [weakSelf sdlex_showInitialData];
+        __typeof__(self) strongSelf = weakSelf;
+        if(strongSelf) {
+            if (!success) {
+                SDLLogE(@"SDL errored starting up: %@", error);
+                [strongSelf sdlex_updateProxyState:ProxyStateStopped];
+                return;
+            }
+            
+            [strongSelf sdlex_updateProxyState:ProxyStateConnected];
+            
+            [strongSelf sdlex_setupPermissionsCallbacks];
+            
+            if ([strongSelf.sdlManager.hmiLevel isEqualToEnum:SDLHMILevelFull]) {
+                [strongSelf sdlex_showInitialData];
+            }
         }
     }];
 }
@@ -239,7 +242,10 @@ NS_ASSUME_NONNULL_BEGIN
     // NOTE: You may want to preload your interaction sets, because they can take a while for the remote system to process. We're going to ignore our own advice here.
     __weak typeof(self) weakSelf = self;
     performInteractionCommand.handler = ^void(SDLOnCommand *notification) {
-        [weakSelf sdlex_sendPerformOnlyChoiceInteractionWithManager:manager];
+        __typeof__(self) strongSelf = weakSelf;
+        if(strongSelf) {
+            [strongSelf sdlex_sendPerformOnlyChoiceInteractionWithManager:manager];
+        }
     };
     
     return performInteractionCommand;

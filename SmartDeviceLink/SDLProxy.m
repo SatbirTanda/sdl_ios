@@ -203,8 +203,11 @@ static float DefaultConnectionTimeout = 45.0;
         self.startSessionTimer = [[SDLTimer alloc] initWithDuration:StartSessionTime repeat:NO];
         __weak typeof(self) weakSelf = self;
         self.startSessionTimer.elapsedBlock = ^{
-            SDLLogW(@"Start session timed out");
-            [weakSelf performSelector:@selector(notifyProxyClosed) withObject:nil afterDelay:NotifyProxyClosedDelay];
+            __typeof__(self) strongSelf = weakSelf;
+            if(strongSelf) {
+                SDLLogW(@"Start session timed out");
+                [strongSelf performSelector:@selector(notifyProxyClosed) withObject:nil afterDelay:NotifyProxyClosedDelay];
+            }
         };
     }
     [self.startSessionTimer start];
@@ -429,34 +432,36 @@ static float DefaultConnectionTimeout = 45.0;
                             URLString:request.url
                     completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
                          __strong typeof(weakSelf) strongSelf = weakSelf;
-
-                        if (error) {
-                            SDLLogW(@"OnSystemRequest HTTP response error: %@", error);
-                            return;
+                        
+                        if(strongSelf) {
+                            if (error) {
+                                SDLLogW(@"OnSystemRequest HTTP response error: %@", error);
+                                return;
+                            }
+                            
+                            if (data == nil || data.length == 0) {
+                                SDLLogW(@"OnSystemRequest HTTP response error: no data received");
+                                return;
+                            }
+                            
+                            // Create the SystemRequest RPC to send to module.
+                            SDLLogV(@"OnSystemRequest HTTP response");
+                            SDLSystemRequest *request = [[SDLSystemRequest alloc] init];
+                            request.correlationID = [NSNumber numberWithInt:PoliciesCorrelationId];
+                            request.requestType = SDLRequestTypeProprietary;
+                            request.bulkData = data;
+                            
+                            // Parse and display the policy data.
+                            SDLPolicyDataParser *pdp = [[SDLPolicyDataParser alloc] init];
+                            NSData *policyData = [pdp unwrap:data];
+                            if (policyData) {
+                                [pdp parsePolicyData:policyData];
+                                SDLLogV(@"Cloud policy data: %@", pdp);
+                            }
+                            
+                            // Send the RPC Request
+                            [strongSelf sendRPC:request];
                         }
-
-                        if (data == nil || data.length == 0) {
-                            SDLLogW(@"OnSystemRequest HTTP response error: no data received");
-                            return;
-                        }
-
-                        // Create the SystemRequest RPC to send to module.
-                        SDLLogV(@"OnSystemRequest HTTP response");
-                        SDLSystemRequest *request = [[SDLSystemRequest alloc] init];
-                        request.correlationID = [NSNumber numberWithInt:PoliciesCorrelationId];
-                        request.requestType = SDLRequestTypeProprietary;
-                        request.bulkData = data;
-
-                        // Parse and display the policy data.
-                        SDLPolicyDataParser *pdp = [[SDLPolicyDataParser alloc] init];
-                        NSData *policyData = [pdp unwrap:data];
-                        if (policyData) {
-                            [pdp parsePolicyData:policyData];
-                            SDLLogV(@"Cloud policy data: %@", pdp);
-                        }
-
-                        // Send the RPC Request
-                        [strongSelf sendRPC:request];
                     }];
 }
 
@@ -465,13 +470,15 @@ static float DefaultConnectionTimeout = 45.0;
     [self sdl_sendDataTaskWithURL:[NSURL URLWithString:request.url]
                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
 					__strong typeof(weakSelf) strongSelf = weakSelf;
-                    if (error != nil) {
-                        SDLLogW(@"OnSystemRequest (lock screen icon) HTTP download task failed: %@", error.localizedDescription);
-                        return;
+                    if(strongSelf) {
+                        if (error != nil) {
+                            SDLLogW(@"OnSystemRequest (lock screen icon) HTTP download task failed: %@", error.localizedDescription);
+                            return;
+                        }
+                        
+                        UIImage *icon = [UIImage imageWithData:data];
+                        [strongSelf invokeMethodOnDelegates:@selector(onReceivedLockScreenIcon:) withObject:icon];
                     }
-                    
-                    UIImage *icon = [UIImage imageWithData:data];
-                    [strongSelf invokeMethodOnDelegates:@selector(onReceivedLockScreenIcon:) withObject:icon];
                 }];
 }
 
@@ -486,28 +493,30 @@ static float DefaultConnectionTimeout = 45.0;
               toURLString:request.url
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (error != nil) {
-                SDLLogW(@"OnSystemRequest (HTTP) error: %@", error.localizedDescription);
-                return;
+            if(strongSelf) {
+                if (error != nil) {
+                    SDLLogW(@"OnSystemRequest (HTTP) error: %@", error.localizedDescription);
+                    return;
+                }
+
+                if (data.length == 0) {
+                    SDLLogW(@"OnSystemRequest (HTTP) error: no data returned");
+                    return;
+                }
+
+                // Show the HTTP response
+                SDLLogV(@"OnSystemRequest (HTTP) response: %@", response);
+
+                // Create the SystemRequest RPC to send to module.
+                SDLPutFile *putFile = [[SDLPutFile alloc] init];
+                putFile.fileType = SDLFileTypeJSON;
+                putFile.correlationID = @(PoliciesCorrelationId);
+                putFile.syncFileName = @"response_data";
+                putFile.bulkData = data;
+
+                // Send RPC Request
+                [strongSelf sendRPC:putFile];
             }
-
-            if (data.length == 0) {
-                SDLLogW(@"OnSystemRequest (HTTP) error: no data returned");
-                return;
-            }
-
-            // Show the HTTP response
-            SDLLogV(@"OnSystemRequest (HTTP) response: %@", response);
-
-            // Create the SystemRequest RPC to send to module.
-            SDLPutFile *putFile = [[SDLPutFile alloc] init];
-            putFile.fileType = SDLFileTypeJSON;
-            putFile.correlationID = @(PoliciesCorrelationId);
-            putFile.syncFileName = @"response_data";
-            putFile.bulkData = data;
-
-            // Send RPC Request
-            [strongSelf sendRPC:putFile];
         }];
 }
 
@@ -669,7 +678,10 @@ static float DefaultConnectionTimeout = 45.0;
     [[self.urlSession uploadTaskWithRequest:request
                                    fromData:data
                           completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-                                           [weakSelf syncPDataNetworkRequestCompleteWithData:data response:response error:error];
+                              __typeof__(self) strongSelf = weakSelf;
+                              if(strongSelf) {
+                                           [strongSelf syncPDataNetworkRequestCompleteWithData:data response:response error:error];
+                              }
                                        }] resume];
 
     SDLLogV(@"OnEncodedSyncPData (HTTP Request)");

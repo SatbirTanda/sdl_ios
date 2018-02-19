@@ -55,24 +55,26 @@ NSTimeInterval const StreamThreadWaitSecs = 1.0;
     // TODO: This assignment should be broken out of the if and the if / else should be flipped.
     if ((self.easession = [[EASession alloc] initWithAccessory:self.accessory forProtocol:self.protocol])) {
         __strong typeof(self) strongSelf = weakSelf;
-
-        SDLLogD(@"Created Session Object");
-
-        strongSelf.streamDelegate.streamErrorHandler = [self streamErroredHandler];
-        strongSelf.streamDelegate.streamOpenHandler = [self streamOpenedHandler];
-        if (self.isDataSession) {
-            self.streamDelegate.streamHasSpaceHandler = [self sdl_streamHasSpaceHandler];
-            // Start I/O event loop processing events in iAP channel
-            self.ioStreamThread = [[NSThread alloc] initWithTarget:self selector:@selector(sdl_accessoryEventLoop) object:nil];
-            [self.ioStreamThread setName:IOStreamThreadName];
-            [self.ioStreamThread start];
+        if(strongSelf) {
+            SDLLogD(@"Created Session Object");
+            
+            strongSelf.streamDelegate.streamErrorHandler = [self streamErroredHandler];
+            strongSelf.streamDelegate.streamOpenHandler = [self streamOpenedHandler];
+            if (self.isDataSession) {
+                self.streamDelegate.streamHasSpaceHandler = [self sdl_streamHasSpaceHandler];
+                // Start I/O event loop processing events in iAP channel
+                self.ioStreamThread = [[NSThread alloc] initWithTarget:self selector:@selector(sdl_accessoryEventLoop) object:nil];
+                [self.ioStreamThread setName:IOStreamThreadName];
+                [self.ioStreamThread start];
+            } else {
+                // Set up control session -- no need for its own thread
+                [self startStream:self.easession.outputStream];
+                [self startStream:self.easession.inputStream];
+            }
+            return YES;
         } else {
-            // Set up control session -- no need for its own thread
-            [self startStream:self.easession.outputStream];
-            [self startStream:self.easession.inputStream];
+            return NO;
         }
-        return YES;
-
     } else {
         SDLLogE(@"Error: Could Not Create Session Object");
         return NO;
@@ -245,18 +247,19 @@ NSTimeInterval const StreamThreadWaitSecs = 1.0;
 
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-
-        if (stream == [strongSelf.easession outputStream]) {
-            SDLLogD(@"Output Stream Opened");
-            strongSelf.isOutputStreamOpen = YES;
-        } else if (stream == [strongSelf.easession inputStream]) {
-            SDLLogD(@"Input Stream Opened");
-            strongSelf.isInputStreamOpen = YES;
-        }
-
-        // When both streams are open, session initialization is complete. Let the delegate know.
-        if (strongSelf.isInputStreamOpen && strongSelf.isOutputStreamOpen) {
-            [strongSelf.delegate onSessionInitializationCompleteForSession:weakSelf];
+        if(strongSelf) {
+            if (stream == [strongSelf.easession outputStream]) {
+                SDLLogD(@"Output Stream Opened");
+                strongSelf.isOutputStreamOpen = YES;
+            } else if (stream == [strongSelf.easession inputStream]) {
+                SDLLogD(@"Input Stream Opened");
+                strongSelf.isInputStreamOpen = YES;
+            }
+            
+            // When both streams are open, session initialization is complete. Let the delegate know.
+            if (strongSelf.isInputStreamOpen && strongSelf.isOutputStreamOpen) {
+                [strongSelf.delegate onSessionInitializationCompleteForSession:strongSelf];
+            }
         }
     };
 }
@@ -266,9 +269,10 @@ NSTimeInterval const StreamThreadWaitSecs = 1.0;
 
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-
-        SDLLogW(@"Stream Error: %@", stream);
-        [strongSelf.delegate onSessionStreamsEnded:strongSelf];
+        if(strongSelf) {
+            SDLLogW(@"Stream Error: %@", stream);
+            [strongSelf.delegate onSessionStreamsEnded:strongSelf];
+        }
     };
 }
 
@@ -277,12 +281,13 @@ NSTimeInterval const StreamThreadWaitSecs = 1.0;
 
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-
-        if (!strongSelf.isDataSession) {
-            return;
+        if(strongSelf) {
+            if (!strongSelf.isDataSession) {
+                return;
+            }
+            
+            [strongSelf sdl_dequeueAndWriteToOutputStream];
         }
-
-        [strongSelf sdl_dequeueAndWriteToOutputStream];
     };
 }
 

@@ -216,10 +216,13 @@ SDLLifecycleState *const SDLLifecycleStateReady = @"Ready";
     // Apple Bug ID #30059457
     __weak typeof(self) weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [weakSelf.delegate managerDidDisconnect];
-
-        if (shouldRestart) {
-            [weakSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStarted];
+        __typeof__(self) strongSelf = weakSelf;
+        if(strongSelf) {
+            [strongSelf.delegate managerDidDisconnect];
+            
+            if (shouldRestart) {
+                [strongSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStarted];
+            }
         }
     });
 }
@@ -239,19 +242,22 @@ SDLLifecycleState *const SDLLifecycleStateReady = @"Ready";
     [self sdl_sendRequest:regRequest
         withResponseHandler:^(__kindof SDLRPCRequest *_Nullable request, __kindof SDLRPCResponse *_Nullable response, NSError *_Nullable error) {
             // If the success BOOL is NO or we received an error at this point, we failed. Call the ready handler and transition to the DISCONNECTED state.
-            if (error != nil || ![response.success boolValue]) {
-                SDLLogE(@"Failed to register the app. Error: %@, Response: %@", error, response);
-                weakSelf.readyHandler(NO, error);
-
-                if (weakSelf.lifecycleState != SDLLifecycleStateReconnecting) {
-                    [weakSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStopped];
+            __typeof__(self) strongSelf = weakSelf;
+            if(strongSelf) {
+                if (error != nil || ![response.success boolValue]) {
+                    SDLLogE(@"Failed to register the app. Error: %@, Response: %@", error, response);
+                    strongSelf.readyHandler(NO, error);
+                    
+                    if (strongSelf.lifecycleState != SDLLifecycleStateReconnecting) {
+                        [strongSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStopped];
+                    }
+                    
+                    return;
                 }
                 
-                return;
+                strongSelf.registerResponse = (SDLRegisterAppInterfaceResponse *)response;
+                [strongSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateRegistered];
             }
-
-            weakSelf.registerResponse = (SDLRegisterAppInterfaceResponse *)response;
-            [weakSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateRegistered];
         }];
 }
 
@@ -339,11 +345,14 @@ SDLLifecycleState *const SDLLifecycleStateReady = @"Ready";
     __weak typeof(self) weakSelf = self;
     [self sdl_sendRequest:unregisterRequest
         withResponseHandler:^(__kindof SDLRPCRequest *_Nullable request, __kindof SDLRPCResponse *_Nullable response, NSError *_Nullable error) {
-            if (error != nil || ![response.success boolValue]) {
-                SDLLogE(@"SDL Error unregistering, we are going to hard disconnect: %@, response: %@", error, response);
+            __typeof__(self) strongSelf = weakSelf;
+            if(strongSelf) {
+                if (error != nil || ![response.success boolValue]) {
+                    SDLLogE(@"SDL Error unregistering, we are going to hard disconnect: %@, response: %@", error, response);
+                }
+                
+                [strongSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStopped];
             }
-
-            [weakSelf.lifecycleStateMachine transitionToState:SDLLifecycleStateStopped];
         }];
 }
 

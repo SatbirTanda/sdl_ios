@@ -357,12 +357,13 @@ int const ProtocolIndexTimeoutSeconds = 10;
         __weak typeof(self) weakSelf = self;
         void (^elapsedBlock)(void) = ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
-            
-            SDLLogW(@"Control session timeout");
-            [strongSelf.controlSession stop];
-            strongSelf.controlSession.streamDelegate = nil;
-            strongSelf.controlSession = nil;
-            [strongSelf sdl_retryEstablishSession];
+            if(strongSelf) {
+                SDLLogW(@"Control session timeout");
+                [strongSelf.controlSession stop];
+                strongSelf.controlSession.streamDelegate = nil;
+                strongSelf.controlSession = nil;
+                [strongSelf sdl_retryEstablishSession];
+            }
         };
         self.protocolIndexTimer.elapsedBlock = elapsedBlock;
         
@@ -472,15 +473,17 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        SDLLogD(@"Control stream ended");
-        
-        // End events come in pairs, only perform this once per set.
-        if (strongSelf.controlSession != nil) {
-            [strongSelf.protocolIndexTimer cancel];
-            [strongSelf.controlSession stop];
-            strongSelf.controlSession.streamDelegate = nil;
-            strongSelf.controlSession = nil;
-            [strongSelf sdl_retryEstablishSession];
+        if(strongSelf) {
+            SDLLogD(@"Control stream ended");
+            
+            // End events come in pairs, only perform this once per set.
+            if (strongSelf.controlSession != nil) {
+                [strongSelf.protocolIndexTimer cancel];
+                [strongSelf.controlSession stop];
+                strongSelf.controlSession.streamDelegate = nil;
+                strongSelf.controlSession = nil;
+                [strongSelf sdl_retryEstablishSession];
+            }
         }
     };
 }
@@ -490,32 +493,34 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSInputStream *istream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        SDLLogV(@"Control stream received data");
-        
-        // Read in the stream a single byte at a time
-        uint8_t buf[1];
-        NSInteger len = [istream read:buf maxLength:1];
-        if (len <= 0) {
-            return;
-        }
-        
-        // If we have data from the stream
-        // Determine protocol string of the data session, then create that data session
-        NSString *indexedProtocolString = [NSString stringWithFormat:@"%@%@", IndexedProtocolStringPrefix, @(buf[0])];
-        SDLLogD(@"Control Stream will switch to protocol %@", indexedProtocolString);
-        
-        // Destroy the control session
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            [strongSelf.controlSession stop];
-            strongSelf.controlSession.streamDelegate = nil;
-            strongSelf.controlSession = nil;
-        });
-        
-        if (accessory.isConnected) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [strongSelf sdl_createIAPDataSessionWithAccessory:accessory forProtocol:indexedProtocolString];
-                [strongSelf.protocolIndexTimer cancel];
+        if(strongSelf) {
+            SDLLogV(@"Control stream received data");
+            
+            // Read in the stream a single byte at a time
+            uint8_t buf[1];
+            NSInteger len = [istream read:buf maxLength:1];
+            if (len <= 0) {
+                return;
+            }
+            
+            // If we have data from the stream
+            // Determine protocol string of the data session, then create that data session
+            NSString *indexedProtocolString = [NSString stringWithFormat:@"%@%@", IndexedProtocolStringPrefix, @(buf[0])];
+            SDLLogD(@"Control Stream will switch to protocol %@", indexedProtocolString);
+            
+            // Destroy the control session
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                [strongSelf.controlSession stop];
+                strongSelf.controlSession.streamDelegate = nil;
+                strongSelf.controlSession = nil;
             });
+            
+            if (accessory.isConnected) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [strongSelf sdl_createIAPDataSessionWithAccessory:accessory forProtocol:indexedProtocolString];
+                    [strongSelf.protocolIndexTimer cancel];
+                });
+            }
         }
     };
 }
@@ -525,13 +530,15 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        SDLLogE(@"Control stream error");
-        
-        [strongSelf.protocolIndexTimer cancel];
-        [strongSelf.controlSession stop];
-        strongSelf.controlSession.streamDelegate = nil;
-        strongSelf.controlSession = nil;
-        [strongSelf sdl_retryEstablishSession];
+        if(strongSelf) {
+            SDLLogE(@"Control stream error");
+            
+            [strongSelf.protocolIndexTimer cancel];
+            [strongSelf.controlSession stop];
+            strongSelf.controlSession.streamDelegate = nil;
+            strongSelf.controlSession = nil;
+            [strongSelf sdl_retryEstablishSession];
+        }
     };
 }
 
@@ -543,16 +550,18 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        SDLLogD(@"Data stream ended");
-        if (strongSelf.session != nil) {
-            // The handler will be called on the IO thread, but the session stop method must be called on the main thread and we need to wait for the session to stop before nil'ing it out. To do this, we use dispatch_sync() on the main thread.
-            dispatch_sync(dispatch_get_main_queue(), ^{
-                [strongSelf.session stop];
-            });
-            strongSelf.session.streamDelegate = nil;
-            strongSelf.session = nil;
+        if(strongSelf) {
+            SDLLogD(@"Data stream ended");
+            if (strongSelf.session != nil) {
+                // The handler will be called on the IO thread, but the session stop method must be called on the main thread and we need to wait for the session to stop before nil'ing it out. To do this, we use dispatch_sync() on the main thread.
+                dispatch_sync(dispatch_get_main_queue(), ^{
+                    [strongSelf.session stop];
+                });
+                strongSelf.session.streamDelegate = nil;
+                strongSelf.session = nil;
+            }
+            // We don't call sdl_retryEstablishSession here because the stream end event usually fires when the accessory is disconnected
         }
-        // We don't call sdl_retryEstablishSession here because the stream end event usually fires when the accessory is disconnected
     };
 }
 
@@ -561,24 +570,25 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSInputStream *istream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        
-        uint8_t buf[[[SDLGlobals sharedGlobals] mtuSizeForServiceType:SDLServiceTypeRPC]];
-        while (istream.streamStatus == NSStreamStatusOpen && istream.hasBytesAvailable) {
-            // It is necessary to check the stream status and whether there are bytes available because the dataStreamHasBytesHandler is executed on the IO thread and the accessory disconnect notification arrives on the main thread, causing data to be passed to the delegate while the main thread is tearing down the transport.
-            
-            NSInteger bytesRead = [istream read:buf maxLength:[[SDLGlobals sharedGlobals] mtuSizeForServiceType:SDLServiceTypeRPC]];
-            if (bytesRead < 0) {
-                SDLLogE(@"Failed to read from data stream");
-                break;
-            }
-
-            NSData *dataIn = [NSData dataWithBytes:buf length:(NSUInteger)bytesRead];
-            SDLLogBytes(dataIn, SDLLogBytesDirectionReceive);
-
-            if (bytesRead > 0) {
-                [strongSelf.delegate onDataReceived:dataIn];
-            } else {
-                break;
+        if(strongSelf) {
+            uint8_t buf[[[SDLGlobals sharedGlobals] mtuSizeForServiceType:SDLServiceTypeRPC]];
+            while (istream.streamStatus == NSStreamStatusOpen && istream.hasBytesAvailable) {
+                // It is necessary to check the stream status and whether there are bytes available because the dataStreamHasBytesHandler is executed on the IO thread and the accessory disconnect notification arrives on the main thread, causing data to be passed to the delegate while the main thread is tearing down the transport.
+                
+                NSInteger bytesRead = [istream read:buf maxLength:[[SDLGlobals sharedGlobals] mtuSizeForServiceType:SDLServiceTypeRPC]];
+                if (bytesRead < 0) {
+                    SDLLogE(@"Failed to read from data stream");
+                    break;
+                }
+                
+                NSData *dataIn = [NSData dataWithBytes:buf length:(NSUInteger)bytesRead];
+                SDLLogBytes(dataIn, SDLLogBytesDirectionReceive);
+                
+                if (bytesRead > 0) {
+                    [strongSelf.delegate onDataReceived:dataIn];
+                } else {
+                    break;
+                }
             }
         }
     };
@@ -589,14 +599,16 @@ int const ProtocolIndexTimeoutSeconds = 10;
     
     return ^(NSStream *stream) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
-        SDLLogE(@"Data stream error");
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            [strongSelf.session stop];
-        });
-        strongSelf.session.streamDelegate = nil;
-        strongSelf.session = nil;
-        if (![LegacyProtocolString isEqualToString:strongSelf.session.protocol]) {
-            [strongSelf sdl_retryEstablishSession];
+        if(strongSelf) {
+            SDLLogE(@"Data stream error");
+            dispatch_sync(dispatch_get_main_queue(), ^{
+                [strongSelf.session stop];
+            });
+            strongSelf.session.streamDelegate = nil;
+            strongSelf.session = nil;
+            if (![LegacyProtocolString isEqualToString:strongSelf.session.protocol]) {
+                [strongSelf sdl_retryEstablishSession];
+            }
         }
     };
 }

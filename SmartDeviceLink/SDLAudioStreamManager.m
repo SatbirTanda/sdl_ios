@@ -112,15 +112,18 @@ NSString *const SDLErrorDomainAudioStreamManager = @"com.sdl.extension.pcmAudioS
     float audioLengthSecs = (float)audioData.length / (float)32000.0;
     __weak typeof(self) weakself = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(audioLengthSecs * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        weakself.playing = NO;
-        NSError *error = nil;
-        if (weakself.delegate != nil) {
-            [weakself.delegate audioStreamManager:weakself fileDidFinishPlaying:file.inputFileURL successfully:success];
-        }
-        SDLLogD(@"Ending Audio file: %@", file);
-        [[NSFileManager defaultManager] removeItemAtURL:file.outputFileURL error:&error];
-        if (weakself.delegate != nil && error != nil) {
-            [weakself.delegate audioStreamManager:weakself errorDidOccurForFile:file.inputFileURL error:error];
+        __typeof__(self) strongSelf = weakself;
+        if(strongSelf) {
+            strongSelf.playing = NO;
+            NSError *error = nil;
+            if (strongSelf.delegate != nil) {
+                [strongSelf.delegate audioStreamManager:strongSelf fileDidFinishPlaying:file.inputFileURL successfully:success];
+            }
+            SDLLogD(@"Ending Audio file: %@", file);
+            [[NSFileManager defaultManager] removeItemAtURL:file.outputFileURL error:&error];
+            if (strongSelf.delegate != nil && error != nil) {
+                [strongSelf.delegate audioStreamManager:strongSelf errorDidOccurForFile:file.inputFileURL error:error];
+            }
         }
     });
 }

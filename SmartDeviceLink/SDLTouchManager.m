@@ -395,11 +395,13 @@ static NSUInteger const MaximumNumberOfTouches = 2;
     self.singleTapTimer = dispatch_create_timer(self.tapTimeThreshold, NO, ^{
         // If timer was not canceled by a second tap then only one tap detected
         typeof(weakSelf) strongSelf = weakSelf;
-        strongSelf.singleTapTouch = nil;
-        [strongSelf sdl_cancelSingleTapTimer];
-        if ([strongSelf.touchEventDelegate respondsToSelector:@selector(touchManager:didReceiveSingleTapForView:atPoint:)]) {
-            UIView *hitView = (self.hitTester != nil) ? [self.hitTester viewForPoint:point] : nil;
-            [strongSelf.touchEventDelegate touchManager:strongSelf didReceiveSingleTapForView:hitView atPoint:point];
+        if(strongSelf) {
+            strongSelf.singleTapTouch = nil;
+            [strongSelf sdl_cancelSingleTapTimer];
+            if ([strongSelf.touchEventDelegate respondsToSelector:@selector(touchManager:didReceiveSingleTapForView:atPoint:)]) {
+                UIView *hitView = (self.hitTester != nil) ? [self.hitTester viewForPoint:point] : nil;
+                [strongSelf.touchEventDelegate touchManager:strongSelf didReceiveSingleTapForView:hitView atPoint:point];
+            }
         }
     });
 }
