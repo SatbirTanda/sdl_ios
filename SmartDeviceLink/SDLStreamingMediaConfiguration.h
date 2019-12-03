@@ -87,6 +87,8 @@ typedef NS_ENUM(NSUInteger, SDLCarWindowRenderingType) {
  */
 @property (assign, nonatomic) BOOL allowMultipleViewControllerOrientations;
 
+@property (assign, nonatomic) BOOL allowReplayKit;
+
 /**
  Create an insecure video streaming configuration. No security managers will be provided and the encryption flag will be set to None. If you'd like custom video encoder settings, you can set the property manually.
 

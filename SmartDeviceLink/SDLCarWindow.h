@@ -6,6 +6,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <ReplayKit/ReplayKit.h>
 
 @class SDLStreamingMediaConfiguration;
 @class SDLStreamingVideoLifecycleManager;

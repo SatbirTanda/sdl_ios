@@ -38,6 +38,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (assign, nonatomic, getter=isVideoStreamStarted) BOOL videoStreamStarted;
 
+@property (assign, nonatomic) BOOL allowReplayKit;
+
 @end
 
 @implementation SDLCarWindow
@@ -49,6 +51,7 @@ NS_ASSUME_NONNULL_BEGIN
     _streamManager = streamManager;
     _renderingType = configuration.carWindowRenderingType;
     _allowMultipleOrientations = configuration.allowMultipleViewControllerOrientations;
+    _allowReplayKit = configuration.allowReplayKit;
 
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(sdl_didReceiveVideoStreamStarted:) name:SDLVideoStreamDidStartNotification object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(sdl_didReceiveVideoStreamStopped:) name:SDLVideoStreamDidStopNotification object:nil];
@@ -72,29 +75,48 @@ NS_ASSUME_NONNULL_BEGIN
         return;
     }
 
-    CGRect bounds = self.rootViewController.view.bounds;
-    UIGraphicsBeginImageContextWithOptions(bounds.size, YES, 1.0f);
-    switch (self.renderingType) {
-        case SDLCarWindowRenderingTypeLayer: {
-            [self.rootViewController.view.layer renderInContext:UIGraphicsGetCurrentContext()];
-        } break;
-        case SDLCarWindowRenderingTypeViewAfterScreenUpdates: {
-            [self.rootViewController.view drawViewHierarchyInRect:bounds afterScreenUpdates:YES];
-        } break;
-        case SDLCarWindowRenderingTypeViewBeforeScreenUpdates: {
-            [self.rootViewController.view drawViewHierarchyInRect:bounds afterScreenUpdates:NO];
-        } break;
-    }
+    if ((@available(iOS 11.0, *)) && self.allowReplayKit) {
+        if (![[RPScreenRecorder sharedRecorder] isRecording]) {
+            [[RPScreenRecorder sharedRecorder] startCaptureWithHandler:^(CMSampleBufferRef  _Nonnull sampleBuffer, RPSampleBufferType bufferType, NSError * _Nullable error) {
+                if (error) {
+                    SDLLogD(@"Video stream error %@", error.debugDescription);
+                } else {
+                    [self.streamManager sendVideoData:CMSampleBufferGetImageBuffer(sampleBuffer)];
+                }
+            } completionHandler:^(NSError * _Nullable error) {
+                if (error) {
+                    SDLLogD(@"Video stream error %@", error.debugDescription);
+                }
+            }];
+        }
+    } else {
+        // Fallback on earlier versions
+        CGRect bounds = self.rootViewController.view.bounds;
 
-    UIImage *screenshot = UIGraphicsGetImageFromCurrentImageContext();
-    UIGraphicsEndImageContext();
+        UIGraphicsBeginImageContextWithOptions(bounds.size, YES, 1.0f);
+        switch (self.renderingType) {
+            case SDLCarWindowRenderingTypeLayer: {
+                [self.rootViewController.view.layer renderInContext:UIGraphicsGetCurrentContext()];
+            } break;
+            case SDLCarWindowRenderingTypeViewAfterScreenUpdates: {
+                [self.rootViewController.view drawViewHierarchyInRect:bounds afterScreenUpdates:YES];
+            } break;
+            case SDLCarWindowRenderingTypeViewBeforeScreenUpdates: {
+                [self.rootViewController.view drawViewHierarchyInRect:bounds afterScreenUpdates:NO];
+            } break;
+        }
 
-    CGImageRef imageRef = screenshot.CGImage;
-    CVPixelBufferRef pixelBuffer = [self.class sdl_pixelBufferForImageRef:imageRef usingPool:self.streamManager.pixelBufferPool];
-    if (pixelBuffer != nil) {
-        [self.streamManager sendVideoData:pixelBuffer];
-        CVPixelBufferRelease(pixelBuffer);
-    }
+        UIImage *screenshot = UIGraphicsGetImageFromCurrentImageContext();
+        UIGraphicsEndImageContext();
+
+        CGImageRef imageRef = screenshot.CGImage;
+        CVPixelBufferRef pixelBuffer = [self.class sdl_pixelBufferForImageRef:imageRef usingPool:self.streamManager.pixelBufferPool];
+        if (pixelBuffer != nil) {
+            [self.streamManager sendVideoData:pixelBuffer];
+            CVPixelBufferRelease(pixelBuffer);
+        }
+    };
+
 }
 
 #pragma mark - SDLNavigationLockScreenManager Notifications
